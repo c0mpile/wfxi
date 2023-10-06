@@ -122,7 +122,6 @@ requirements() {
     req_execs=(
         "curl"
         "grep"
-        "jq"
         "rm"
         "shasum"
         "tar"
@@ -338,13 +337,10 @@ wfxi_local() {
 #######################################
 wfxi_self() {
 
-    # local wfx_gitlab_api_url
     local wfx_script_path
     local new_self
 
-    # wfx_gitlab_api_url="https://gitlab.com/api/v4/projects/50967790/releases/permalink/latest"
     wfx_gitlab_tags_url="https://gitlab.com/msmafra/wfxi/-/tags"
-    # new_self="$(curl --silent --location ${wfx_gitlab_api_url} | tee /dev/null | jq -r ".tag_name")"
     new_self="$(curl --silent ${wfx_gitlab_tags_url} | grep -Eo --max-count=1 "tags/v([0-9]{1,}.[0-9]{1,})" | sed 's/[\/]//g')"
 
     if [[ "${new_self//[a-zA-Z-.]/}" -gt "${VERSION//./}" ]]; then
@@ -419,13 +415,13 @@ wfxi_get() {
             ;;
         *)
             # If the file is there, it starts the download
-            message progress "Starting the download of ${wfx_file_url} and ${wfx_file_url}a512..."
+            message progress "Starting the download of ${wfx_file_url} and ${wfx_file_url}.sha512..."
             wget --quiet --show-progress --continue "${wfx_file_url}" --output-document "${HOME}/Downloads/${wfx_dowloaded_file}"
-            wget --quiet --show-progress --continue "${wfx_file_url}a512" --output-document "${HOME}/Downloads/${wfx_dowloaded_file}a512"
+            wget --quiet --show-progress --continue "${wfx_file_url}.sha512" --output-document "${HOME}/Downloads/${wfx_dowloaded_file}.sha512"
 
-            if [[ -f "${HOME}/Downloads/${wfx_dowloaded_file}a512" ]]; then
+            if [[ -f "${HOME}/Downloads/${wfx_dowloaded_file}.sha512" ]]; then
                 message progress "Checking integrity"
-                if ! sha512sum --quiet --check "${HOME}/Downloads/${wfx_dowloaded_file}a512"; then
+                if ! sha512sum --quiet --check "${HOME}/Downloads/${wfx_dowloaded_file}.sha512"; then
                     message error "File integrity not good. Delete it and try again."
                     exit 1
                 else
