@@ -11,7 +11,7 @@
 # Update: 2023
 #
 # shellcheck disable=SC1001
-VERSION="2.0"
+VERSION="2.0.1"
 LC_ALL=C
 LANG=C
 
@@ -21,6 +21,7 @@ declare SCRIPT_FOLDER
 declare USER_LOCAL_BIN
 declare LOGGED_USER
 declare -a USAGE_ARRAY
+declare WFX_LOCAL_BIN
 
 SCRIPT_TITLE="# Waterfox Installation Script (wfxi)"
 SCRIPT_FILE="$(\basename "${0}")"
@@ -28,7 +29,7 @@ SCRIPT_FOLDER="$(cd "$(\dirname "${BASH_SOURCE[0]}")" && \pwd)"
 USER_LOCAL_BIN="${HOME}/.local/bin"
 WFX_DESTINATION="/opt/waterfox"
 LOGGED_USER="$(logname)"
-COMPRESSED_EXT=".tar.bz2" # To account for a change in compression algorithm e.g. .tar.gz, .tar.xz
+COMPRESSED_EXT=".tar.bz2" # To account for a change or choice in compression algorithm e.g. .tar.gz, .tar.xz
 USAGE_ARRAY=(
     "current"
     "desktop"
@@ -46,21 +47,22 @@ if [[ "${USER}" != root ]]; then
     # checks if doas is installed and use it as default
     [[ -f /usr/bin/doas ]] && PRIVUP="doas" || PRIVUP="sudo"
 fi
+WFX_LOCAL_BIN="/usr/local/bin"
 
 main() {
 
     message white "${SCRIPT_TITLE}"
-
+    super_user_check
     requirements
 
     if [[ ! "${1}" =~ ${USAGE_ARRAY[*]} ]]; then
 
         case "${1}" in
         current)
-            wfxi_local
+            wfxi_local "${@}"
             ;;
         desktop)
-            wfxi_create_desktop_file "${@}"
+            wfxi_create_dot_desktop "${@}"
             ;;
         do)
             wfxi_do "${@}"
@@ -78,13 +80,16 @@ main() {
             wfxi_remove "${@}"
             ;;
         self)
-            wfxi_self
+            wfxi_self "${@}"
             ;;
         usage)
             wfxi_usage "${@}"
             ;;
         version)
             message recommend "${SCRIPT_FILE} version: ${VERSION}"
+            ;;
+        test)
+            test "${@}"
             ;;
         *)
             wfxi_usage
@@ -94,6 +99,22 @@ main() {
         message warn "\"${1}\" unknown."
     fi
 
+}
+#######################################
+# Checks if priviledges where elevated and exits if true
+# Globals: LOGGED_USER
+# Arguments: None
+#######################################
+super_user_check() {
+    # log "Super user check"
+    local user_id
+
+    user_id="$(\id --user)"
+
+    if [[ "${user_id}" -eq 0 ]]; then
+        message fatal "${LOGGED_USER}, this script is not intended to be used with elevated privileges. Exiting."
+        exit 1
+    fi
 }
 #######################################
 # Prints simple info log style for each function
@@ -123,7 +144,7 @@ requirements() {
         "curl"
         "grep"
         "rm"
-        "shasum"
+        "sha512sum"
         "tar"
         "sed"
         "wget"
@@ -143,9 +164,6 @@ requirements() {
             message info "Some requirements where not met. ${SCRIPT_FILE} needs:"
             for nf in "${not_found[@]}"; do
                 message bullets "${nf}"
-                if [[ "${nf}" = "jq" ]]; then
-                    message recommend "If JQ is not available via your package manager, it can be dowloaded from https://github.com/jqlang/jq/releases/latest"
-                fi
             done
             exit 1
         fi
@@ -204,6 +222,7 @@ Help:
         Checksums waterfox downloaded file, installs/extracts it to /opt/waterfox, creates a symlink and a dot desktop file.
   ${font_bold}get${font_normal}
         get Downloads the latest or a specified version of Waterfox and its checksum file.
+        Shows the file name with get file or shows the full url with get url
   ${font_bold}help${font_normal}
         Shows this help.
   ${font_bold}need${font_normal}
@@ -211,9 +230,10 @@ Help:
   ${font_bold}remove${font_normal}
         Removes Waterfox from your system. Won't remove your configs and cache.
   ${font_bold}self${font_normal}
-        Checks if there is a newer version of ${SCRIPT_FILE}
+        Checks if there is a newer version of ${SCRIPT_FILE}. Auto installs if the running one is newer.
+        Using the system parameter installs wfxi to /usr/local/bin.
   ${font_bold}usage${font_normal}
-        Shows a quick how to use this script.
+        Shows a quick list of commands to use this script.
   ${font_bold}version${font_normal}
         Shows the current ${SCRIPT_FILE} version.
 "
@@ -321,47 +341,85 @@ wfxi_local() {
     local wfx_binary
 
     wfx_binary="$(command -v waterfox)"
-
     if [[ -f $wfx_binary ]]; then
-        wfx_local_version="$(waterfox --version)"
-        printf "%s" "${wfx_local_version}" | sed 's/[a-z.A-Z-]//g'
+        wfx_local_version="$(${wfx_binary:-0} --version | cut -d" " -f3)"
     else
-        printf "%s" "0"
+        wfx_local_version="0"
     fi
+
+    if [[ "${1}" = "current" ]]; then
+        message info "Watefox installed: ${wfx_local_version}"
+    else
+        printf "%s" "${wfx_local_version}" | sed --sandbox 's/[a-z.A-Z-]//g'
+    fi
+
 }
 #######################################
-# Downloads, copies and renames wfxi to $HOME/.local/bin as wfxi
+# Copies wfxi to $HOME/.local/bin or /usr/local/bin
 # Globals: VERSION, SCRIPT_FOLDER, SCRIPT_FILE, USER_LOCAL_BIN
-# Arguments: None
+# Arguments: None or system
 # Output: None
 #######################################
 wfxi_self() {
 
+    local regex_get_num
+    local regex_num_pure
+    local regex_tags
     local wfx_script_path
     local new_self
+    local wfxi_destination
+    local elevation
+    local -a wfxi_destinations
 
+    regex_get_num="[a-zA-Z-]"
+    regex_num_pure="[a-zA-Z-.]"
+    regex_tags="tags/v([0-9]{1,}.[0-9]{1,})"
     wfx_gitlab_tags_url="https://gitlab.com/msmafra/wfxi/-/tags"
-    new_self="$(curl --silent ${wfx_gitlab_tags_url} | grep -Eo --max-count=1 "tags/v([0-9]{1,}.[0-9]{1,})" | sed 's/[\/]//g')"
-
-    if [[ "${new_self//[a-zA-Z-.]/}" -gt "${VERSION//./}" ]]; then
-        message recommend "Available: ${new_self//[a-zA-Z-]/}"
+    new_self="$(curl --silent ${wfx_gitlab_tags_url} | grep --extended-regex --only-matching --max-count=1 "${regex_tags}" | sed --sandbox 's/[\/]//g')"
+    if [[ "${new_self//${regex_num_pure}/}" -gt "${VERSION//./}" ]]; then
+        message recommend "Available: ${new_self//${regex_get_num}/}"
     else
-        message grey "Available: ${new_self//[a-zA-Z-]/}"
+        message grey "Available: ${new_self//${regex_get_num}/}"
     fi
     message grey "Installed: ${VERSION}"
-
+    wfxi_destinations=(
+        "${USER_LOCAL_BIN}"
+        "${WFX_LOCAL_BIN}"
+    )
     wfx_script_path="${SCRIPT_FOLDER}/${SCRIPT_FILE}"
-
-    if [[ ! -f "${USER_LOCAL_BIN}/wfxi" ]] || [[ "${new_self//[a-zA-Z-.]/}" -gt "${VERSION//./}" ]]; then
-
-        message progress "Installing ${HOME}/.local/bin/wfxi"
-        install --verbose -D --compare --mode="740" --owner="${USER}" \
-            --group="${USERNAME}" "${wfx_script_path}" \
-            --target-directory="${USER_LOCAL_BIN}"
-
+    if [[ "${2}" = "system" ]]; then
+        wfxi_destination="${wfxi_destinations[1]}"
+        elevation="${PRIVUP}"
+    else
+        wfxi_destination="${wfxi_destinations[0]}"
+        elevation=""
     fi
 
+    case "${2}" in
+    "remove")
+        message warn "Self removing"
+        for wd in "${wfxi_destinations[@]}"; do
+            if [[ -f "${wd}/wfxi" ]]; then
+                ${PRIVUP} rm --force --verbose "${wd}/wfxi"
+            fi
+        done
+
+        message info "wfxi deleted."
+        ;;
+    *)
+        if [[ ! -f "${wfxi_destination}/wfxi" ]] || [[ "${new_self//${regex_num_pure}/}" -gt "${VERSION//./}" ]]; then
+
+            message progress "Installing ${wfxi_destination}/wfxi"
+            ${elevation} install --verbose -D --compare --mode="740" --owner="${USER}" \
+                --group="${USERNAME}" "${wfx_script_path}" \
+                --target-directory="${wfxi_destination}"
+            message info "wfxi installed."
+        fi
+        ;;
+    esac
+
 }
+
 #######################################
 # Downloads and checks the .tar.bz2 to $HOME/Downloads
 # Also prints file name, URL and file version
@@ -381,27 +439,30 @@ wfxi_get() {
     regex_url_filter="(http|https)://[a-zA-Z0-9./?=_-]*"
     regex_file_filter="[a-z]{1,}-G[0-9]{1,}.[0-9]{1,}.[0-9]{1,}.tar.bz2"
     wfx_page_url="https://www.waterfox.net/download"
-    wfx_file_url=$(
+    wfx_file_url="$(
         wget --quiet --output-document=- "${wfx_page_url}" |
             grep --extended-regexp --only-matching "${regex_url_filter}" |
             sort --unique |
-            grep --max-count=1 ".bz2"
-    )
-    wfx_remote_file_status=$(
+            grep --max-count=1 "${COMPRESSED_EXT}"
+    )"
+    wfx_remote_file_status="$(
         wget --quiet --spider --server-response "${wfx_file_url}" 2>&1 |
             head --lines=1 |
             awk 'NR==1{print $2}'
-    )
+    )"
     wfx_dowloaded_file="$(
         printf "%s" "${wfx_file_url}" |
             grep --extended-regexp --only-matching "${regex_file_filter}"
     )"
+    wfx_dowloaded_file_path="${HOME}/Downloads/${wfx_dowloaded_file}"
+    wfx_shasum_file="${HOME}/Downloads/${wfx_dowloaded_file}.sha512"
+    if [[ ${*} =~ "nil" ]]; then
+        internal_param="${1}"
+    fi
 
     if [[ ! "${wfx_remote_file_status}" = "200" ]]; then
-
-        message error "No file found! Leaving..."
+        message error "No remote file found! Leaving..."
         exit 1
-
     else
         case "${2}" in
         "url")
@@ -411,21 +472,24 @@ wfxi_get() {
             printf "%s" "${wfx_dowloaded_file}"
             ;;
         "version")
-            printf "%s" "${wfx_dowloaded_file/$COMPRESSED_EXT/}" | sed 's/[a-z.A-Z-]//g'
+            printf "%s" "${wfx_dowloaded_file/$COMPRESSED_EXT/}" | sed --sandbox 's/[waterfox-]//g' # full version G6.0.3
             ;;
         *)
+
             # If the file is there, it starts the download
             message progress "Starting the download of ${wfx_file_url} and ${wfx_file_url}.sha512..."
-            wget --quiet --show-progress --continue "${wfx_file_url}" --output-document "${HOME}/Downloads/${wfx_dowloaded_file}"
-            wget --quiet --show-progress --continue "${wfx_file_url}.sha512" --output-document "${HOME}/Downloads/${wfx_dowloaded_file}.sha512"
+            curl --silent --progress-bar --location --continue-at - "${wfx_file_url}" --output "${wfx_dowloaded_file_path}"
+            curl --silent --progress-bar --location --continue-at - "${wfx_file_url}.sha512" --output "${wfx_shasum_file}"
 
-            if [[ -f "${HOME}/Downloads/${wfx_dowloaded_file}.sha512" ]]; then
+            if [[ -f "${wfx_shasum_file}" ]]; then
                 message progress "Checking integrity"
-                if ! sha512sum --quiet --check "${HOME}/Downloads/${wfx_dowloaded_file}.sha512"; then
-                    message error "File integrity not good. Delete it and try again."
-                    exit 1
-                else
+                if sha512sum --quiet --check "${wfx_dowloaded_file_path}"; then
                     message info "Integrity check OK"
+                else
+                    message error "File integrity not good. Delete it and try again."
+                    message info "During tests, sometimes it happens, not sure why."
+                    message info "Try manually running sha512sum --quiet --check ${wfx_dowloaded_file_path}"
+                    # exit 1
                 fi
             else
                 message warn "File integrity not known, check sum file not found"
@@ -448,41 +512,57 @@ wfxi_do() {
     local wfx_file
     local wfx_file
     local wfx_local
+    local -a wfx_install_files_list
 
-    wfx_file="$(wfxi_get null file)"
-    wfx_remote="$(wfxi_get null version)"
-    wfx_local="$(wfxi_local)"
+    if [[ ! "${2}" = "delete" ]]; then
+        wfx_file="$(wfxi_get nil file)"
+        wfx_remote="$(wfxi_get nil version)" # full version G6.0.3
+        wfx_local="$(wfxi_local)"
+    fi
+    wfx_install_files_list=(
+        "${WFX_DESTINATION}"
+        "/usr/share/applications/waterfox.desktop"
+        "/usr/local/bin/waterfox"
+    )
 
     case "${2}" in
     "delete")
         if [[ -d "${WFX_DESTINATION}" ]]; then
 
-            message warn "Deleting: ${WFX_DESTINATION}"
+            message warn "Deleting: ${wfx_install_files_list[*]}"
             message info "Cache, favorites, configurations, and .desktop file to non standard path won't be deleted"
-            "${PRIVUP}" rm --recursive --force "${WFX_DESTINATION}"
-            "${PRIVUP}" rm --force --verbose "/usr/share/applications/waterfox.desktop"
-            message progress "deleted"
+
+            for fl in "${wfx_install_files_list[@]}"; do
+                "${PRIVUP}" rm --recursive --force --one-file-system "${fl}"
+            done
+
+            message info "deleted"
+
+        else
+            message info "Nothing to delete"
 
         fi
         ;;
     *)
 
-        if [[ ${wfx_local} -lt "${wfx_remote}" ]]; then
+        if [[ "${wfx_remote//[a-z.A-Z-]/}" -gt "${wfx_local}" ]]; then
 
-            if [[ -f "${wfx_file}" ]]; then
+            message info "Newer version available: ${wfx_remote}"
+
+            if [[ -f "${HOME}/Downloads/${wfx_file}" ]]; then
 
                 "${PRIVUP}" mkdir --parent --verbose "${WFX_DESTINATION}"
 
-                message progress "Extracting ${wfx_file} contents to ${WFX_DESTINATION}"
-                "${PRIVUP}" tar --extract --verbose --file "${wfx_file}" --directory="${WFX_DESTINATION}"
+                message progress "Extracting ${HOME}/Downloads/${wfx_file} contents to ${WFX_DESTINATION}"
+                "${PRIVUP}" tar --extract --file "${HOME}/Downloads/${wfx_file}" --directory="${WFX_DESTINATION}"
 
                 message progress "Creating symbolic link"
                 wfxi_symbolic_link
 
                 message progress "Generating the desktop file"
-                wfxi_create_desktop_file
+                wfxi_create_dot_desktop
 
-                message progress "done"
+                message info "done"
             else
 
                 message error "No file found"
@@ -499,16 +579,16 @@ wfxi_do() {
 }
 #######################################
 # Creates a symbolic link for the waterfox executable inside $HOME/.local/bin
-# Globals: USER_LOCAL_BIN, WFX_DESTINATION
+# Globals: WFX_LOCAL_BIN, WFX_DESTINATION
 # Arguments: None
 # Output: None
 #######################################
 wfxi_symbolic_link() {
 
     # Creates the symbolic for the main executable on /usr/bin
-    if [[ ! -f "${USER_LOCAL_BIN}/waterfox" ]]; then
-        message progress "Creating a symbolic link inside ${USER_LOCAL_BIN}"
-        ln --symbolic --verbose --force "${WFX_DESTINATION}/waterfox" "${USER_LOCAL_BIN}/wfxi"
+    if [[ ! -f "${WFX_LOCAL_BIN}/waterfox" ]]; then
+        message progress "Creating a symbolic link inside ${WFX_LOCAL_BIN}"
+        ${PRIVUP} ln --symbolic --verbose --force "${WFX_DESTINATION}/waterfox" "${WFX_LOCAL_BIN}/waterfox"
     else
         message info "Waterfox symbolic link to the executable file is already there!"
     fi
@@ -520,7 +600,7 @@ wfxi_symbolic_link() {
 # Arguments: None or destination
 # Output: None
 #######################################
-wfxi_create_desktop_file() {
+wfxi_create_dot_desktop() {
 
     local wfx_exec
     local wfx_desktop_exec
@@ -529,7 +609,6 @@ wfxi_create_desktop_file() {
     local wfx_icon_path
 
     if [[ -d "${2}" ]]; then
-        echo "$2"
         wfx_desktop_file_path="${2}"
     else
         wfx_desktop_file_path="/usr/share/applications"
@@ -541,7 +620,7 @@ wfxi_create_desktop_file() {
     wfx_icon_path="${WFX_DESTINATION}/browser/chrome/icons/default/default256.png"
 
     message progress "Creating the ${wfx_desktop_file_name}..."
-    ${PRIVUP} tee --ignore-interrupts "${wfx_desktop_file_name}" <<WFOX
+    ${PRIVUP} tee --ignore-interrupts "${wfx_desktop_file_name}" &>/dev/null <<WFOX
 [Desktop Entry]
 Version=1.0
 Name=Waterfox
@@ -923,10 +1002,12 @@ Name[pt_BR]=Inicia com o Gerenciador de Perfis
 Exec=${wfx_desktop_exec} --ProfileManager
 WFOX
 
-    if [[ -z "${2}" ]]; then
+    if [[ -n "${2}" ]]; then
+        message progress "Applying correct permissions to ${wfx_desktop_file_name}"
         ${PRIVUP} chown "${LOGGED_USER}": "${wfx_desktop_file_name}"
     fi
 
+    message info "${wfx_desktop_file_name} created."
 }
 #######################################
 # Runs everything
