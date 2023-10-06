@@ -1,0 +1,16 @@
+# https://spec.editorconfig.org/
+[*.sh]
+# like -i=4
+indent_style = space
+indent_size = 4
+
+shell_variant      = bash # --language-variant
+binary_next_line   = true
+switch_case_indent = true  # --case-indent
+space_redirects    = true
+keep_padding       = false # false helped with wrongly aligned if and fi inside a case statement for example
+function_next_line = false  # --func-next-line
+
+# Ignore the entire "third_party" directory.
+[third_party/**]
+ignore = true
