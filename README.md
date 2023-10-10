@@ -1,5 +1,7 @@
 # Waterfox Installation Script
 
+[This repository is mirrored here](https://github.com/msmafra/wfxi)
+
 ## Disclaimer
 - This script comes with no warranty. Use at your own risk.
 - This project is not affiliated with Waterfox in any way.
