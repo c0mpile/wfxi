@@ -4,4 +4,4 @@ README.md export-ignore
 TODO.md export-ignore
 .editorconfig export-ignore
 tests/ export-ignore
-.gitattributes
+.gitattributes export-ignore
