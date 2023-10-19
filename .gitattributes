@@ -1,0 +1,8 @@
+# https://justanopinion.blog/gitattributes-in-github-releases/
+# .gitattributes
+.gitignore export-ignore
+README.md export-ignore
+TODO.md export-ignore
+.editorconfig export-ignore
+tests/ export-ignore
+.gitattributes export-ignore
