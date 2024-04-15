@@ -8,16 +8,31 @@
 
 Get more infomation about the Waterfox browser in its [https://www.waterfox.net/en-US/docs/faq/](https://www.waterfox.net/en-US/docs/faq/)
 
-## Installation
-Clone the repo
+## Obtaining the script
+#### From a compressed source
+### Via compressed file
+From 2.0.2 onwards, the compressed files only contains the wfxi script. So you can uncompress it and run from the same created folder. One of the compressed files can be downloaded and extracted (tar.gz, tar.bz2, tar or zip).
+
+Check https://gitlab.com/msmafra/wfxi/-/releases to download the latest.
 ```
-git clone https://gitlab.com/msmafra/wfxi.git
+❯ curl -sLO -C- https://gitlab.com/msmafra/wfxi/-/archive/v2.0.2/wfxi-v2.0.2.tar.bz2
+❯ tar xvf wfxi-v2.0.2.tar.bz2
+❯ cd wfxi-v2.0.2
 ```
-Go to the directory
+#### From the raw latest version
+
 ```
-cd wfxi
+❯ curl -sLO -C- https://gitlab.com/msmafra/wfxi/raw/main/wfxi
 ```
-Run it to install. It will copy itself by default to _$HOME/.local/bin_. Using **self system** will insted place it inside _/usr/local/bin_.
+
+#### Cloning the repo
+```
+❯ git clone https://gitlab.com/msmafra/wfxi.git
+❯ cd wfxi
+```
+## Installing
+
+To install it use the **self** paramenter. It will copy itself by default to _$HOME/.local/bin_. Using **self system** will instead place it inside _/usr/local/bin_.
 ```
 ❯ sh ./wfxi self
 # Or
@@ -25,7 +40,7 @@ Run it to install. It will copy itself by default to _$HOME/.local/bin_. Using *
 ```
 
 ## Requirements
-It depends on: curl, grep, rm, sha512sum, tar, sed and wget.
+Goes without saying as it is a bash script, it depends on: curl, grep, rm, sha512sum, tar and sed.
 
 ## Usage
 ### self
@@ -122,6 +137,8 @@ Help:
         Checks if the current version of Waterfox in your system.
   desktop
         Generates the desktop file to /usr/share/applications or to a path of your choosing.
+        Example to create /home/marcelo/waterfox.desktop:
+        wfxi desktop ~ 
   do
         Checksums waterfox downloaded file, installs/extracts it to /opt/waterfox, creates a symlink and a dot desktop file.
   get
