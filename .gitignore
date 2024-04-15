@@ -1,1 +1,3 @@
 dev/*
+# .gitmessage for temporarely storing the next relase message
+.gitmessage

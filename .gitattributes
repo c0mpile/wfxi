@@ -7,3 +7,4 @@ TODO.md export-ignore
 tests/ export-ignore
 dev/ export-ignore
 .gitattributes export-ignore
+.gitmessage export-ignore
