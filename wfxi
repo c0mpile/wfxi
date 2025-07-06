@@ -57,6 +57,7 @@ main() {
     local wfx_file_url
     local wfx_remote_file_status
     local -a wfx_install_files_list
+    local latest_version
 
     wfx_install_files_list=(
         "${WFX_DESTINATION}"
@@ -64,23 +65,21 @@ main() {
         "/usr/local/bin/waterfox"
     )
     regex_url_filter="(http|https)://[a-zA-Z0-9./?=_-]*"
-    regex_file_filter="[a-z]{1,}-G[0-9]{1,}.[0-9]{1,}.[0-9]{1,}.tar.bz2"
+    regex_file_filter="[a-z]{1,}-[0-9]{1,}.[0-9]{1,}.[0-9]{1,}.tar.bz2"
     wfx_page_url="https://www.waterfox.net/download"
-    wfx_file_url="$(
+    # Extract the latest stable version number marked as (Latest)
+    latest_version="$(
         curl --silent --location "${wfx_page_url}" |
-            grep --extended-regexp --only-matching "${regex_url_filter}" |
-            sort --unique |
-            grep --max-count=1 "${COMPRESSED_EXT}"
+            grep -oP '\d+\.\d+\.\d+(?=\s*\(Latest\))'
     )"
+    # Construct the direct download URL for the stable version
+    wfx_file_url="https://cdn1.waterfox.net/waterfox/releases/${latest_version}/Linux_x86_64/waterfox-${latest_version}.tar.bz2"
     wfx_remote_file_status="$(
         curl --silent --head "${wfx_file_url}" 2>&1 |
             head --lines=1 |
             awk 'NR==1{print $2}'
     )"
-    wfx_dowloaded_file="$(
-        printf "%s" "${wfx_file_url}" |
-            grep --extended-regexp --only-matching "${regex_file_filter}"
-    )"
+    wfx_dowloaded_file="waterfox-${latest_version}.tar.bz2"
     wfx_dowloaded_file_path="${HOME}/Downloads/${wfx_dowloaded_file}"
     wfx_shasum_file="${HOME}/Downloads/${wfx_dowloaded_file}.sha512"
 
